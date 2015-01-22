@@ -3,8 +3,6 @@
 #include <cstring>
 #include <tuple>
 
-#include <iostream>
-
 namespace xmpp {
 
   /**
@@ -114,7 +112,19 @@ namespace xmpp {
     */
   Socket::Socket(Protocol p)
     : proto(p), desc(0)
-  {}
+  {
+    this->set_options({
+      {Option::OptBufSizeOut, 512},
+      {Option::OptBufSizeIn, 512},
+      {Option::OptTimeout, 120}
+    });
+
+    this->buf_out.resize(512);
+    this->buf_in.resize(512);
+
+    this->setg(&this->buf_in.at(0), &this->buf_in.at(0), &this->buf_in.at(0) + this->buf_in.capacity());
+    this->setp(&this->buf_out.at(0), &this->buf_out.at(0) + this->buf_out.capacity());
+  }
 
   Socket::~Socket()
   {
@@ -179,14 +189,56 @@ namespace xmpp {
     return false;
   }
 
-  size_t Socket::read()
+  size_t Socket::recv()
   {
-    return 0L;
+    size_t read = 0;
+
+    switch(this->proto)
+    {
+      case Protocol::TCP:
+      {
+        read = ::recv(this->desc, this->gptr(), this->egptr() - this->gptr(), 0);
+      } break;
+
+      case Protocol::UDP:
+      {
+
+      } break;
+    }
+    
+    return read;
   }
 
-  size_t Socket::write()
+  size_t Socket::recv_all()
   {
-    return 0L;
+    char* base = this->gptr();
+
+    while(0 < this->recv());
+
+    return this->egptr() - base;
+  }
+
+  size_t Socket::send()
+  {
+    size_t written = 0;
+
+    switch(this->proto)
+    {
+      case Protocol::TCP:
+      {
+        written = ::send(this->desc, this->pbase(), this->pptr() - this->pbase(), 0);
+      } break;
+
+      case Protocol::UDP:
+      {
+
+      } break;
+    }
+
+    this->buf_out.clear();
+    //this->setp(&this->buf_out.at(0), &this->buf_out.at(0) + this->buf_out.capacity());
+
+    return written;
   }
 
   const SocketAddr& Socket::get_addr()
@@ -204,6 +256,23 @@ namespace xmpp {
     for(auto v : o)
     {
       this->opts[std::get<0>(v)] = std::get<1>(v);
+
+      switch(std::get<0>(v))
+      {
+        case Option::OptBufSizeIn: {
+          this->buf_in.resize(std::get<1>(v).get<int>());
+          this->setg(&this->buf_in.at(0), &this->buf_in.at(0), &this->buf_in.at(0) + this->buf_in.capacity());
+        } break;
+
+        case Option::OptBufSizeOut: {
+          this->buf_out.resize(std::get<1>(v).get<int>());
+          this->setp(&this->buf_out.at(0), &this->buf_out.at(0) + this->buf_out.capacity());
+        } break;
+
+        case Option::OptTimeout: {
+
+        } break;
+      }
     }
   }
 
@@ -244,7 +313,7 @@ namespace xmpp {
     return &svc;
   }
 
-  SocketAddrList SocketServices::resolve(const std::string& host, port_t port, Socket::Protocol p)
+  SocketAddrList SocketServices::resolve(const std::string& host, port_t port, SocketAddr::Version ip_ver, Socket::Protocol p)
   {
     SocketAddrList hosts;
     struct addrinfo *info, hints = {0};
@@ -252,6 +321,13 @@ namespace xmpp {
     hints.ai_family = AF_UNSPEC;
     hints.ai_protocol = IPPROTO_TCP | IPPROTO_UDP;
     hints.ai_socktype = SOCK_STREAM | SOCK_DGRAM;
+
+    switch(ip_ver)
+    {
+      case SocketAddr::Version::Ver4: hints.ai_family = AF_INET;
+      case SocketAddr::Version::Ver6: hints.ai_family = AF_INET6;
+      default: break;
+    }
 
     if(0 == ::getaddrinfo(host.c_str(), nullptr, &hints, &info))
     {
@@ -273,12 +349,10 @@ namespace xmpp {
               {
                 char buf[64] = {0};
                 
-                if(nullptr == ::inet_ntop(AF_INET6, (in_addr6*)&((sockaddr_in6*) info->ai_addr)->sin6_addr, buf, 63))
+                if(nullptr != ::inet_ntop(AF_INET6, (in_addr6*)&((sockaddr_in6*)info->ai_addr)->sin6_addr, buf, 63))
                 {
-                  continue;
+                  hosts.push_back(SocketAddr{buf, port, SocketAddr::Ver6});
                 }
-
-                hosts.push_back(SocketAddr{buf, port, SocketAddr::Ver4});
               } break;
             }
           }
@@ -287,5 +361,7 @@ namespace xmpp {
         info = info->ai_next;
       }
     }
+
+    return hosts;
   }
-}
+} /* ns xmpp */;

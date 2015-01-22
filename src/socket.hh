@@ -7,8 +7,10 @@
 
 #include <list>
 #include <map>
+#include <vector>
 #include <string>
 #include <initializer_list>
+#include <sstream>
 
 #ifdef PLATFORM_WIN
 # define _WIN32_WINNT 0x501
@@ -46,8 +48,10 @@ namespace xmpp {
     public:
       enum Version
       {
-        Ver4,
-        Ver6,
+        Ver4 = 1,
+        Ver6 = 2,
+
+        Both = Ver4|Ver6,
       };
 
     public:
@@ -77,7 +81,7 @@ namespace xmpp {
       Version ver;
   } /* class SocketAddr */;
 
-  class Socket
+  class Socket : public std::stringbuf
   {
     public:
       enum Protocol
@@ -92,8 +96,11 @@ namespace xmpp {
         Listener,
       };
 
-      enum Options
+      enum Option
       {
+        OptBufSizeOut,
+        OptBufSizeIn,
+
         OptTimeout,
       };
 
@@ -112,8 +119,9 @@ namespace xmpp {
 
     public:
       bool accept(Socket& socket);
-      size_t read();
-      size_t write();
+      size_t recv();
+      size_t recv_all();
+      size_t send();
 
     public:
       const SocketAddr& get_addr();
@@ -124,13 +132,20 @@ namespace xmpp {
       Variant& get_option(unsigned k);
 
     private:
-      /*std::unique_ptr< std::streambuf > buf_in, buf_out; use socket buf instead*/
       Protocol proto;
       SocketAddr addr_src, addr_dst;
       socket_t desc;
+
+      std::vector<char> buf_in, buf_out;
+
       std::map<unsigned, Variant> opts;
   };
 
+  /**
+    * SOCKETSERVICES
+    *
+    * Needed to resolve hostnames and setup platform independent libraries such as winsock
+    */
   class SocketServices
   {    
     private:
@@ -141,7 +156,7 @@ namespace xmpp {
       static SocketServices* get_instance();
 
     public:
-      static SocketAddrList resolve(const std::string& host, port_t port, Socket::Protocol = Socket::Protocol::TCP);
+      static SocketAddrList resolve(const std::string& host, port_t port, SocketAddr::Version = SocketAddr::Version::Both, Socket::Protocol = Socket::Protocol::TCP);
 
 
     private:
