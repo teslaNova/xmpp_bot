@@ -56,7 +56,7 @@ namespace xmpp {
 
     public:
       SocketAddr();
-      SocketAddr(char* host_addr, port_t port, Version ver = Ver4);
+      SocketAddr(char* host_addr, port_t port, Version ver = Ver4, bool translated = false);
       ~SocketAddr();
     
     public:

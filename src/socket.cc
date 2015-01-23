@@ -13,17 +13,24 @@ namespace xmpp {
     memset(&this->addr, 0, sizeof(this->addr));
   }
 
-  SocketAddr::SocketAddr(char* host_addr, port_t port, Version ver)
+  SocketAddr::SocketAddr(char* host_addr, port_t port, Version ver, bool translated)
     : port(port), ver(ver)
   {
     switch(ver)
     {
       case Ver4:
       {
+        if(translated == true)
+        {
+          memcpy(&this->addr.v4.sin_addr, host_addr, sizeof(in_addr));
+        }
+        else
+        {
+          ::inet_pton4(host_addr, (unsigned char*)(&this->addr.v4.sin_addr));
+        }
+
         this->addr.v4.sin_family = AF_INET;
         this->addr.v4.sin_port = htons(port);
-        
-        ::inet_pton4(host_addr, (unsigned char*)(&this->addr.v4.sin_addr));
       } break;
 
       case Ver6:
@@ -31,8 +38,14 @@ namespace xmpp {
         this->addr.v6.sin6_family = AF_INET6;
         this->addr.v6.sin6_port = htons(port);
 
-        ::inet_pton6(host_addr, (unsigned char*)(&this->addr.v6.sin6_addr));
-        // TODO: implement inet_addr() equiv. for ipv6
+        if(translated == true)
+        {
+          memcpy(&this->addr.v6.sin6_addr, host_addr, sizeof(in_addr6));
+        }
+        else
+        {
+          ::inet_pton6(host_addr, (unsigned char*)(&this->addr.v6.sin6_addr));
+        }
       } break;
     }
   }
@@ -101,7 +114,14 @@ namespace xmpp {
     switch(this->ver)
     {
       case Ver4: tmp = inet_ntoa(this->addr.v4.sin_addr); break;
-      case Ver6: break;
+      case Ver6: {
+        char buf[64] = {0};
+                
+        if(nullptr != ::inet_ntop6((const unsigned char*)&this->addr.v6.sin6_addr, buf, 64))
+        {
+          tmp = buf;
+        }
+      } break;
     }
 
     return tmp;
@@ -118,12 +138,6 @@ namespace xmpp {
       {Option::OptBufSizeIn, 512},
       {Option::OptTimeout, 120}
     });
-
-    this->buf_out.resize(512);
-    this->buf_in.resize(512);
-
-    this->setg(&this->buf_in.at(0), &this->buf_in.at(0), &this->buf_in.at(0) + this->buf_in.capacity());
-    this->setp(&this->buf_out.at(0), &this->buf_out.at(0) + this->buf_out.capacity());
   }
 
   Socket::~Socket()
@@ -211,6 +225,8 @@ namespace xmpp {
 
   size_t Socket::recv_all()
   {
+    this->setg(&this->buf_in.at(0), &this->buf_in.at(0), &this->buf_in.at(0) + this->buf_in.capacity());
+
     char* base = this->gptr();
 
     while(0 < this->recv());
@@ -342,17 +358,12 @@ namespace xmpp {
             {
               case AF_INET:
               {
-                hosts.push_back(SocketAddr{inet_ntoa(((sockaddr_in*)info->ai_addr)->sin_addr), port, SocketAddr::Ver4});
+                hosts.push_back(SocketAddr{(char*)&((sockaddr_in*)info->ai_addr)->sin_addr, port, SocketAddr::Ver4, true});
               } break;
 
               case AF_INET6:
               {
-                char buf[64] = {0};
-                
-                if(nullptr != ::inet_ntop(AF_INET6, (in_addr6*)&((sockaddr_in6*)info->ai_addr)->sin6_addr, buf, 63))
-                {
-                  hosts.push_back(SocketAddr{buf, port, SocketAddr::Ver6});
-                }
+                hosts.push_back(SocketAddr{(char*)&((sockaddr_in6*)info->ai_addr)->sin6_addr, port, SocketAddr::Ver6, true});
               } break;
             }
           }
