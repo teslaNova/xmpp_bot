@@ -12,7 +12,12 @@
 #include <initializer_list>
 #include <sstream>
 
+#include <openssl/ssl.h> // NOTE: dtls1.h, s/winsock.h/winsock2.h/
+
 #ifdef PLATFORM_WIN
+# ifdef _WIN32_WINNT
+#  undef _WIN32_WINNT
+# endif
 # define _WIN32_WINNT 0x501
 
 # ifndef WIN32_LEAN_AND_MEAN
@@ -109,29 +114,29 @@ namespace xmpp {
 
     public:
       Socket(Protocol p = Socket::Protocol::TCP);
-      ~Socket();
+      virtual ~Socket();
 
     public:
-      bool setup(SocketAddr& addr, Mode mode = Socket::Mode::Client);
-      void close();
+      virtual bool setup(SocketAddr& addr, Mode mode = Socket::Mode::Client);
+      virtual void close();
 
-      bool established();
+      virtual bool established();
 
     public:
-      bool accept(Socket& socket);
-      size_t recv();
+      virtual bool accept(Socket& socket);
+      virtual size_t recv();
       size_t recv_all();
-      size_t send();
+      virtual size_t send();
 
     public:
       const SocketAddr& get_addr();
       const SocketAddr& get_local_addr();
 
     public:
-      void set_options(std::initializer_list<OptionValue> o);
+      virtual void set_options(std::initializer_list<OptionValue> o);
       Variant& get_option(unsigned k);
 
-    private:
+    protected:
       Protocol proto;
       SocketAddr addr_src, addr_dst;
       socket_t desc;
@@ -140,6 +145,26 @@ namespace xmpp {
 
       std::map<unsigned, Variant> opts;
   };
+
+  class SSLSocket : public Socket
+  {
+    public:
+      SSLSocket(Protocol p = Socket::Protocol::TCP);
+      ~SSLSocket();
+
+    public:
+      bool setup(SocketAddr& addr, Mode mode = Socket::Mode::Client);
+      void close();
+
+    public:
+      bool accept(SSLSocket& socket);
+      size_t recv();
+      size_t send();
+    
+    private:
+      SSL_CTX *ssl_ctx;
+      SSL *ssl_handle;
+  } /* class SSLSocket */;
 
   /**
     * SOCKETSERVICES
@@ -156,8 +181,10 @@ namespace xmpp {
       static SocketServices* get_instance();
 
     public:
-      static SocketAddrList resolve(const std::string& host, port_t port, SocketAddr::Version = SocketAddr::Version::Both, Socket::Protocol = Socket::Protocol::TCP);
+      static void init_ssl();
 
+    public:
+      SocketAddrList resolve(const std::string& host, port_t port, SocketAddr::Version = SocketAddr::Version::Both, Socket::Protocol = Socket::Protocol::TCP);
 
     private:
 #     ifdef PLATFORM_WIN

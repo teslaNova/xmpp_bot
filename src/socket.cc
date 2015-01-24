@@ -183,13 +183,13 @@ namespace xmpp {
 
   void Socket::close()
   {
-    if(this->desc != 0)
+    if(this->desc != INVALID_SOCKET)
     {
 #     ifdef PLATFORM_WIN
       closesocket(this->desc);
 #     endif
 
-      this->desc = 0;
+      this->desc = INVALID_SOCKET;
     }
   }
 
@@ -200,12 +200,22 @@ namespace xmpp {
 
   bool Socket::accept(Socket& socket)
   {
+    if(this->desc == INVALID_SOCKET)
+    {
+      return false;
+    }
+
     return false;
   }
 
   size_t Socket::recv()
   {
     size_t read = 0;
+
+    if(this->desc == INVALID_SOCKET)
+    {
+      return 0;
+    }
 
     switch(this->proto)
     {
@@ -225,6 +235,11 @@ namespace xmpp {
 
   size_t Socket::recv_all()
   {
+    if(this->desc == INVALID_SOCKET)
+    {
+      return 0;
+    }
+
     this->setg(&this->buf_in.at(0), &this->buf_in.at(0), &this->buf_in.at(0) + this->buf_in.capacity());
 
     char* base = this->gptr();
@@ -237,6 +252,11 @@ namespace xmpp {
   size_t Socket::send()
   {
     size_t written = 0;
+
+    if(this->desc == INVALID_SOCKET)
+    {
+      return 0;
+    }
 
     switch(this->proto)
     {
@@ -307,6 +327,116 @@ namespace xmpp {
   }
 
   /**
+    * SSLSOCKET
+    */
+  SSLSocket::SSLSocket(Protocol p)
+    : Socket(p)
+  {
+    SocketServices::init_ssl();
+
+    this->ssl_ctx = SSL_CTX_new(TLSv1_1_client_method());
+    this->ssl_handle = SSL_new(this->ssl_ctx);
+  }
+
+  SSLSocket::~SSLSocket()
+  {
+    SSL_free(this->ssl_handle);
+    SSL_CTX_free(this->ssl_ctx);
+  }
+
+  bool SSLSocket::setup(SocketAddr& addr, Mode mode)
+  {
+    if(Socket::setup(addr, mode) == false && this->ssl_handle != nullptr)
+    {
+      Socket::close();
+      return false;
+    }
+
+    if(SSL_set_fd(this->ssl_handle, this->desc) == 0)
+    {
+      Socket::close();
+      return false;
+    }
+
+    if(SSL_connect(this->ssl_handle) < 0 || SSL_do_handshake(this->ssl_handle) < 0)
+    {
+      Socket::close();
+      SSL_shutdown(this->ssl_handle);
+      return false;
+    }
+
+    return true;
+  }
+
+  void SSLSocket::close()
+  {
+    Socket::close();
+
+    if(this->ssl_handle != nullptr) {
+      while(SSL_shutdown(this->ssl_handle) >= 1); // TODO: ret == 0 check.
+      SSL_clear(this->ssl_handle);
+    }
+  }
+
+  bool SSLSocket::accept(SSLSocket& socket)
+  {
+    return false;
+  }
+
+  size_t SSLSocket::recv()
+  {
+    int read = 0;
+
+    if(this->desc == INVALID_SOCKET)
+    {
+      return 0;
+    }
+
+    switch(this->proto)
+    {
+      case Protocol::TCP:
+      {
+        read = SSL_read(this->ssl_handle, this->gptr(), this->egptr() - this->gptr());
+      } break;
+
+      case Protocol::UDP:
+      {
+
+      } break;
+    }
+    
+    return (read < 0 ? 0 : (size_t)read);
+  }
+
+  size_t SSLSocket::send()
+  {
+    int written = 0;
+
+    if(this->desc == INVALID_SOCKET)
+    {
+      return 0;
+    }
+
+    switch(this->proto)
+    {
+      case Protocol::TCP:
+      {
+        written = SSL_write(this->ssl_handle, this->pbase(), this->pptr() - this->pbase());
+      } break;
+
+      case Protocol::UDP:
+      {
+
+      } break;
+    }
+
+    this->buf_out.clear();
+    //this->setp(&this->buf_out.at(0), &this->buf_out.at(0) + this->buf_out.capacity());
+
+    return (written < 0 ? 0 : (size_t)written);
+  }
+
+  /**
     * SOCKETSERVICES
     */
   SocketServices::SocketServices()
@@ -327,6 +457,18 @@ namespace xmpp {
   {
     static SocketServices svc;
     return &svc;
+  }
+
+  inline void SocketServices::init_ssl()
+  {
+    static bool is_ready = false;
+
+    if(is_ready == false) {
+      SSL_load_error_strings();
+      SSL_library_init();
+
+      is_ready = true;
+    }
   }
 
   SocketAddrList SocketServices::resolve(const std::string& host, port_t port, SocketAddr::Version ip_ver, Socket::Protocol p)
