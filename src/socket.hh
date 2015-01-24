@@ -103,9 +103,6 @@ namespace xmpp {
 
       enum Option
       {
-        OptBufSizeOut,
-        OptBufSizeIn,
-
         OptTimeout,
       };
 
@@ -125,10 +122,11 @@ namespace xmpp {
     public:
       virtual bool accept(Socket& socket);
       virtual size_t recv();
-      size_t recv_all();
-      virtual size_t send();
+      virtual size_t send(std::iostream& data);
 
     public:
+      std::iostream& get_input_stream();
+
       const SocketAddr& get_addr();
       const SocketAddr& get_local_addr();
 
@@ -141,7 +139,7 @@ namespace xmpp {
       SocketAddr addr_src, addr_dst;
       socket_t desc;
 
-      std::vector<char> buf_in, buf_out;
+      std::iostream stream_in;
 
       std::map<unsigned, Variant> opts;
   };
@@ -159,7 +157,7 @@ namespace xmpp {
     public:
       bool accept(SSLSocket& socket);
       size_t recv();
-      size_t send();
+      size_t send(std::iostream& data);
     
     private:
       SSL_CTX *ssl_ctx;

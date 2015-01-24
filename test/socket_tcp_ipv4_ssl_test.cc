@@ -24,10 +24,6 @@ int main(int argc, char const *argv[])
 
     if(true == http_connection.setup(h))
     {
-      http_connection.set_options({
-        {xmpp::Socket::OptBufSizeIn, (2 << 11)}
-      });
-
       break;
     }
   }
@@ -38,17 +34,15 @@ int main(int argc, char const *argv[])
               << "' (as " << http_connection.get_addr().get_addr() << ")"
               << " on port " << PORT << std::endl;
 
-    std::iostream socket_stream{&http_connection};
-    socket_stream << "GET /\r\nHTTP/1.1\r\n\r\n";
-
-    http_connection.send();
+    std::stringstream output_stream{"GET /\r\nHTTP/1.1\r\n\r\n"};
+    http_connection.send(output_stream);
     
-    if(0 < http_connection.recv_all())
+    if(0 < http_connection.recv())
     {
       std::cout << "Data received: ";
 
-      while(socket_stream.rdbuf()->in_avail())
-        std::cout << (char) socket_stream.get();
+      while(http_connection.get_input_stream().rdbuf()->in_avail())
+        std::cout << (char) http_connection.get_input_stream().get();
     }
   }
   else

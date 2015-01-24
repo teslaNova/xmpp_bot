@@ -131,13 +131,15 @@ namespace xmpp {
     * SOCKET
     */
   Socket::Socket(Protocol p)
-    : proto(p), desc(0)
+    : proto(p), desc(0), stream_in(nullptr)
   {
+    static std::stringbuf buf;
+
     this->set_options({
-      {Option::OptBufSizeOut, 512},
-      {Option::OptBufSizeIn, 512},
       {Option::OptTimeout, 120}
     });
+
+    stream_in.rdbuf(&buf);
   }
 
   Socket::~Socket()
@@ -221,7 +223,14 @@ namespace xmpp {
     {
       case Protocol::TCP:
       {
-        read = ::recv(this->desc, this->gptr(), this->egptr() - this->gptr(), 0);
+        int buf_len;
+        char buf[(2 << 6)] = {0};
+
+        do
+        {          
+          read += buf_len = ::recv(this->desc, buf, (2 << 6) - 1, 0);
+          this->stream_in.write(buf, buf_len);
+        } while(buf_len > 0);
       } break;
 
       case Protocol::UDP:
@@ -233,23 +242,7 @@ namespace xmpp {
     return read;
   }
 
-  size_t Socket::recv_all()
-  {
-    if(this->desc == INVALID_SOCKET)
-    {
-      return 0;
-    }
-
-    this->setg(&this->buf_in.at(0), &this->buf_in.at(0), &this->buf_in.at(0) + this->buf_in.capacity());
-
-    char* base = this->gptr();
-
-    while(0 < this->recv());
-
-    return this->egptr() - base;
-  }
-
-  size_t Socket::send()
+  size_t Socket::send(std::iostream& data)
   {
     size_t written = 0;
 
@@ -262,7 +255,15 @@ namespace xmpp {
     {
       case Protocol::TCP:
       {
-        written = ::send(this->desc, this->pbase(), this->pptr() - this->pbase(), 0);
+        while(data.rdbuf()->in_avail())
+        {
+          char buf[(2 << 6)] = {0};
+          size_t buf_len = data.rdbuf()->in_avail() > (2 << 6) ? (2 << 6) : data.rdbuf()->in_avail();
+
+          data.read(buf, buf_len);
+          written += ::send(this->desc, buf, buf_len, 0);
+        }
+        
       } break;
 
       case Protocol::UDP:
@@ -271,10 +272,12 @@ namespace xmpp {
       } break;
     }
 
-    this->buf_out.clear();
-    //this->setp(&this->buf_out.at(0), &this->buf_out.at(0) + this->buf_out.capacity());
-
     return written;
+  }
+
+  std::iostream& Socket::get_input_stream()
+  {
+    return this->stream_in;
   }
 
   const SocketAddr& Socket::get_addr()
@@ -295,16 +298,6 @@ namespace xmpp {
 
       switch(std::get<0>(v))
       {
-        case Option::OptBufSizeIn: {
-          this->buf_in.resize(std::get<1>(v).get<int>());
-          this->setg(&this->buf_in.at(0), &this->buf_in.at(0), &this->buf_in.at(0) + this->buf_in.capacity());
-        } break;
-
-        case Option::OptBufSizeOut: {
-          this->buf_out.resize(std::get<1>(v).get<int>());
-          this->setp(&this->buf_out.at(0), &this->buf_out.at(0) + this->buf_out.capacity());
-        } break;
-
         case Option::OptTimeout: {
 
         } break;
@@ -396,7 +389,14 @@ namespace xmpp {
     {
       case Protocol::TCP:
       {
-        read = SSL_read(this->ssl_handle, this->gptr(), this->egptr() - this->gptr());
+        int buf_len;
+        char buf[(2 << 6)] = {0};
+
+        do
+        {          
+          read += buf_len = SSL_read(this->ssl_handle, buf, (2 << 6) - 1);
+          this->stream_in.write(buf, buf_len);
+        } while(buf_len > 0);
       } break;
 
       case Protocol::UDP:
@@ -408,7 +408,7 @@ namespace xmpp {
     return (read < 0 ? 0 : (size_t)read);
   }
 
-  size_t SSLSocket::send()
+  size_t SSLSocket::send(std::iostream& data)
   {
     int written = 0;
 
@@ -421,7 +421,15 @@ namespace xmpp {
     {
       case Protocol::TCP:
       {
-        written = SSL_write(this->ssl_handle, this->pbase(), this->pptr() - this->pbase());
+        while(data.rdbuf()->in_avail())
+        {
+          char buf[(2 << 6)] = {0};
+          size_t buf_len = data.rdbuf()->in_avail() > (2 << 6) ? (2 << 6) : data.rdbuf()->in_avail();
+
+          data.read(buf, buf_len);
+          written += SSL_write(this->ssl_handle, buf, buf_len);
+        }
+        
       } break;
 
       case Protocol::UDP:
@@ -429,9 +437,6 @@ namespace xmpp {
 
       } break;
     }
-
-    this->buf_out.clear();
-    //this->setp(&this->buf_out.at(0), &this->buf_out.at(0) + this->buf_out.capacity());
 
     return (written < 0 ? 0 : (size_t)written);
   }
