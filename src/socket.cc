@@ -133,13 +133,11 @@ namespace xmpp {
   Socket::Socket(Protocol p)
     : proto(p), desc(0), stream_in(nullptr)
   {
-    static std::stringbuf buf;
-
     this->set_options({
       {Option::OptTimeout, 120}
     });
 
-    stream_in.rdbuf(&buf);
+    stream_in.rdbuf(&this->stream_in_buf);
   }
 
   Socket::~Socket()

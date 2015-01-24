@@ -140,6 +140,7 @@ namespace xmpp {
       socket_t desc;
 
       std::iostream stream_in;
+      std::stringbuf stream_in_buf;
 
       std::map<unsigned, Variant> opts;
   };
