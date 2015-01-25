@@ -61,7 +61,7 @@ namespace xmpp {
 
     public:
       SocketAddr();
-      SocketAddr(char* host_addr, port_t port, Version ver = Ver4, bool translated = false);
+      SocketAddr(const char* host_addr, const port_t port, Version ver = Ver4, bool translated = false);
       ~SocketAddr();
     
     public:
@@ -121,7 +121,7 @@ namespace xmpp {
 
     public:
       virtual bool accept(Socket& socket);
-      virtual size_t recv();
+      virtual size_t recv(); // TODO: handle connection close by remote host
       virtual size_t send(std::iostream& data);
 
     public:
@@ -168,7 +168,7 @@ namespace xmpp {
   /**
     * SOCKETSERVICES
     *
-    * Needed to resolve hostnames and setup platform independent libraries such as winsock
+    * Needed to resolve hostnames and setup libraries such as winsock, openssl, ..
     */
   class SocketServices
   {    
@@ -191,6 +191,6 @@ namespace xmpp {
 #     endif
   } /* class SocketServices */;
 
-}
+} /* ns xmpp */;
 
 #endif /* XMPP_IO_SOCKET_HH_ */

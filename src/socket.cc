@@ -3,6 +3,8 @@
 #include <cstring>
 #include <tuple>
 
+#include <iostream>
+
 namespace xmpp {
 
   /**
@@ -13,7 +15,7 @@ namespace xmpp {
     memset(&this->addr, 0, sizeof(this->addr));
   }
 
-  SocketAddr::SocketAddr(char* host_addr, port_t port, Version ver, bool translated)
+  SocketAddr::SocketAddr(const char* host_addr, const port_t port, Version ver, bool translated)
     : port(port), ver(ver)
   {
     switch(ver)
@@ -153,6 +155,12 @@ namespace xmpp {
 
     if(this->desc == INVALID_SOCKET)
     {
+      std::cout << "socket()" << std::endl;
+
+      std::cout << "is tcp:       " << (Protocol::TCP == this->proto) << std::endl
+                << "AF_INET:      " << ((addr.get_version() == SocketAddr::Ver4 ? AF_INET : AF_INET6) == AF_INET) << std::endl
+                << "sock_stream:  " << ((this->proto == Protocol::TCP ? SOCK_STREAM : SOCK_DGRAM) == SOCK_STREAM) << std::endl
+                << "ipproto_tcp:  " << ((this->proto == Protocol::TCP ? IPPROTO_TCP : IPPROTO_UDP) == IPPROTO_TCP) << std::endl;
       return false;
     }
 
@@ -167,6 +175,7 @@ namespace xmpp {
                               addr.get_version() == SocketAddr::Ver4 ? 
                                 sizeof(sockaddr_in) : sizeof(sockaddr_in6)))
         {
+          std::cout << "connect()" << std::endl;
           return false;
         }
       } break;
